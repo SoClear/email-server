@@ -14,7 +14,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 config = "0.15"
 thiserror = "2.0"
-openssl = "0.10"
 
 [profile.release]
 opt-level = 3            # 最高优化级别
