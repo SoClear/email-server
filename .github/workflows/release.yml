@@ -47,18 +47,19 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y pkg-config libssl-dev
 
-    - name: Install cross-compilation dependencies (Linux ARM64)
+    - name: Install cross (Linux ARM64)
       if: matrix.target == 'aarch64-unknown-linux-gnu'
       run: |
-        sudo apt-get update
-        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-        sudo apt-get install -y pkg-config libssl-dev
+        cargo install cross
 
-    - name: Build
+    - name: Build with cross (Linux ARM64)
+      if: matrix.target == 'aarch64-unknown-linux-gnu'
       run: |
-        if [ "${{ matrix.target }}" != "" ]; then
-          cargo build --release --target ${{ matrix.target }}
-        else
+        cross build --release --target ${{ matrix.target }}
+
+    - name: Build (Windows x64, Linux x64)
+      run: |
+        if [ "${{ matrix.target }}" == "" ]; then
           cargo build --release
         fi
       shell: bash
