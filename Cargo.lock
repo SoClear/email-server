@@ -333,6 +333,7 @@ dependencies = [
  "axum",
  "config",
  "lettre",
+ "openssl",
  "serde",
  "serde_json",
  "thiserror",
