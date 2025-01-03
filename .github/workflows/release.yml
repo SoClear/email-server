@@ -1,0 +1,107 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*' # 当推送 v 开头的tag时触发，如 v1.0.0
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_LOG: info
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: windows
+            arch: x64
+            runner: windows-latest
+            artifact_name: email-server.exe
+            asset_name: email-server-windows-x64.zip
+          - os: linux
+            arch: x64
+            runner: ubuntu-latest
+            artifact_name: email-server
+            asset_name: email-server-linux-x64.tar.gz
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            artifact_name: email-server
+            asset_name: email-server-linux-arm64.tar.gz
+            target: aarch64-unknown-linux-gnu
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Install cross-compilation tools
+      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+    - name: Build
+      run: |
+        if [ "${{ matrix.target }}" != "" ]; then
+          cargo build --release --target ${{ matrix.target }}
+        else
+          cargo build --release
+        fi
+      shell: bash
+
+    - name: Prepare release files (Windows)
+      if: matrix.os == 'windows'
+      run: |
+        mkdir release
+        cp target/release/${{ matrix.artifact_name }} release/
+        cp email_config.json release/
+        cp README.md release/
+        echo "@echo off" > release/start.bat
+        echo "SET RUST_LOG=info" >> release/start.bat
+        echo "IF NOT EXIST email_config.json (" >> release/start.bat
+        echo "    echo Error: email_config.json not found!" >> release/start.bat
+        echo "    echo Please copy email_config.json to email_config.json and update the settings." >> release/start.bat
+        echo "    exit /b 1" >> release/start.bat
+        echo ")" >> release/start.bat
+        echo "email-server.exe" >> release/start.bat
+        cd release
+        7z a ../${{ matrix.asset_name }} *
+
+    - name: Prepare release files (Linux)
+      if: matrix.os == 'linux'
+      run: |
+        mkdir release
+        if [ "${{ matrix.target }}" != "" ]; then
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} release/
+        else
+          cp target/release/${{ matrix.artifact_name }} release/
+        fi
+        cp email_config.json release/
+        cp README.md release/
+        echo '#!/bin/bash' > release/start.sh
+        echo 'export RUST_LOG=info' >> release/start.sh
+        echo 'if [ ! -f "email_config.json" ]; then' >> release/start.sh
+        echo '    echo "Error: email_config.json not found!"' >> release/start.sh
+        echo '    echo "Please copy email_config.json to email_config.json and update the settings."' >> release/start.sh
+        echo '    exit 1' >> release/start.sh
+        echo 'fi' >> release/start.sh
+        echo './email-server' >> release/start.sh
+        chmod +x release/start.sh
+        chmod +x release/${{ matrix.artifact_name }}
+        cd release
+        tar czf ../${{ matrix.asset_name }} *
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: ${{ matrix.asset_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

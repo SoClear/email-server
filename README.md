@@ -6,6 +6,20 @@ A simple SMTP email server built with Rust.
 
 1. Put `email_config.json` and `email-server` in the same folder.
 2. Edit `email_config.json` with your settings:
+
+    ```json
+    {
+        "smtp_server": "smtp.example.com",
+        "smtp_port": 587,
+        "email_account": "your-email@example.com",
+        "email_password": "your-password",
+        "email_from": "your-email@example.com",
+        "email_to": "default-to@example.com",
+        "sender_name": "default-to@example.com",
+        "api_key": "your-api-key"
+    }
+    ```
+
     - smtp\_server: Your SMTP server address
     - smtp\_port: SMTP server port
     - email\_account: Your email account
