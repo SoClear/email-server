@@ -47,11 +47,6 @@ jobs:
         sudo apt update
         sudo apt install -y pkg-config libssl-dev gcc-aarch64-linux-gnu
 
-    - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.asset_name }}
-
     - name: Build Release
       run: |
         if [ "${{ matrix.target }}" != "" ]; then
