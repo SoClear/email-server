@@ -1,0 +1,16 @@
+{
+    "email": {
+        "smtp_server": "smtp.example.com",
+        "smtp_port": 587,
+        "email_account": "your-email@example.com",
+        "email_password": "your-password",
+        "email_from": "your-email@example.com",
+        "email_to": "default-to@example.com",
+        "sender_name": "default sender name"
+    },
+    "server": {
+        "api_key": "your-api-key",
+        "server_host": "0.0.0.0",
+        "server_port": 3000
+    }
+}

@@ -41,13 +41,18 @@ jobs:
       with:
         targets: ${{ matrix.target }}
 
-    - name: Install cross
+    - name: Install dependencies (Linux arm64)
       if: matrix.target == 'aarch64-unknown-linux-gnu'
       run: |
         sudo apt update
         sudo apt install -y pkg-config libssl-dev gcc-aarch64-linux-gnu
 
-    - name: Build
+    - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.asset_name }}
+
+    - name: Build Release
       run: |
         if [ "${{ matrix.target }}" != "" ]; then
           cargo build --release --target ${{ matrix.target }}
@@ -61,13 +66,13 @@ jobs:
       run: |
         mkdir release
         cp target/release/${{ matrix.artifact_name }} release/
-        cp email_config.json release/
+        cp app_config.json release/
         cp README.md release/
         echo "@echo off" > release/start.bat
         echo "SET RUST_LOG=info" >> release/start.bat
-        echo "IF NOT EXIST email_config.json (" >> release/start.bat
-        echo "    echo Error: email_config.json not found!" >> release/start.bat
-        echo "    echo Please copy email_config.json to email_config.json and update the settings." >> release/start.bat
+        echo "IF NOT EXIST app_config.json (" >> release/start.bat
+        echo "    echo Error: app_config.json not found!" >> release/start.bat
+        echo "    echo Please copy app_config.json to app_config.json and update the settings." >> release/start.bat
         echo "    exit /b 1" >> release/start.bat
         echo ")" >> release/start.bat
         echo "email-server.exe" >> release/start.bat
@@ -83,13 +88,13 @@ jobs:
         else
           cp target/release/${{ matrix.artifact_name }} release/
         fi
-        cp email_config.json release/
+        cp app_config.json release/
         cp README.md release/
         echo '#!/bin/bash' > release/start.sh
         echo 'export RUST_LOG=info' >> release/start.sh
-        echo 'if [ ! -f "email_config.json" ]; then' >> release/start.sh
-        echo '    echo "Error: email_config.json not found!"' >> release/start.sh
-        echo '    echo "Please copy email_config.json to email_config.json and update the settings."' >> release/start.sh
+        echo 'if [ ! -f "app_config.json" ]; then' >> release/start.sh
+        echo '    echo "Error: app_config.json not found!"' >> release/start.sh
+        echo '    echo "Please copy app_config.json to app_config.json and update the settings."' >> release/start.sh
         echo '    exit 1' >> release/start.sh
         echo 'fi' >> release/start.sh
         echo './email-server' >> release/start.sh

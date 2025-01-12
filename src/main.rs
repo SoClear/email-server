@@ -6,7 +6,14 @@ use axum::{
     Router,
 };
 use config::{Config, File};
-use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
+use lettre::{
+    transport::smtp::{
+        authentication::Credentials,
+        client::{Tls, TlsParameters},
+        Error as SmtpError,
+    },
+    Message, SmtpTransport, Transport,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -25,7 +32,32 @@ struct EmailConfig {
     email_from: String,
     email_to: String,
     sender_name: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct ServerConfig {
+    #[serde(default = "default_server_host")] // 如果未配置，使用默认主机
+    server_host: String,
+    #[serde(default = "default_server_port")] // 如果未配置，使用默认端口
+    server_port: u16,
     api_key: String,
+}
+
+// 默认主机函数
+fn default_server_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+// 默认端口函数
+fn default_server_port() -> u16 {
+    3000
+}
+
+// 整合两个配置的结构体
+#[derive(Debug, Deserialize, Clone)]
+struct AppConfig {
+    email: EmailConfig,
+    server: ServerConfig,
 }
 
 // 请求频率限制结构
@@ -115,7 +147,7 @@ async fn send_email(
     Json(req): Json<EmailRequest>,
 ) -> Result<impl IntoResponse, EmailError> {
     // 验证 API key
-    validate_api_key(&headers, &state.config.api_key)?;
+    validate_api_key(&headers, &state.app_config.server.api_key)?;
 
     // 获取客户端 IP
     let ip = headers
@@ -134,7 +166,7 @@ async fn send_email(
     // 使用请求中的值或配置中的默认值
     let from = if req.from.is_empty() {
         debug!("Using default from address");
-        &state.config.email_from
+        &state.app_config.email.email_from
     } else {
         debug!("Using custom from address: {}", req.from);
         &req.from
@@ -142,7 +174,7 @@ async fn send_email(
 
     let to = if req.to.is_empty() {
         debug!("Using default to address");
-        &state.config.email_to
+        &state.app_config.email.email_to
     } else {
         debug!("Using custom to address: {}", req.to);
         &req.to
@@ -155,8 +187,11 @@ async fn send_email(
         debug!("Using custom sender name: {}", req.sender_name);
         &req.sender_name
     } else {
-        debug!("Using default sender name: {}", state.config.sender_name);
-        &state.config.sender_name
+        debug!(
+            "Using default sender name: {}",
+            state.app_config.email.sender_name
+        );
+        &state.app_config.email.sender_name
     };
 
     // 构建发件人地址字符串，包含昵称
@@ -165,7 +200,7 @@ async fn send_email(
     // 构建邮件
     debug!(
         "Building email message with sender name: {}",
-        state.config.sender_name
+        state.app_config.email.sender_name
     );
     let email = Message::builder()
         .from(from_addr.parse().unwrap())
@@ -196,7 +231,7 @@ async fn send_email(
 struct AppState {
     rate_limit: Mutex<RateLimit>,
     smtp_transport: SmtpTransport,
-    config: EmailConfig,
+    app_config: AppConfig,
 }
 
 // 邮件请求结构
@@ -232,6 +267,51 @@ enum EmailError {
     MissingApiKey,
 }
 
+// 加载配置文件
+fn get_app_config() -> AppConfig {
+    return Config::builder()
+        .add_source(File::with_name("app_config.json"))
+        .build()
+        .unwrap()
+        .try_deserialize()
+        .unwrap();
+}
+
+// 创建 SMTP 传输
+fn create_smtp_transport(email_config: &EmailConfig) -> Result<SmtpTransport, SmtpError> {
+    // 创建 SMTP 凭据
+    let creds = Credentials::new(
+        email_config.email_account.clone(),
+        email_config.email_password.clone(),
+    );
+
+    // 创建 TLS 参数
+    let tls_parameters = TlsParameters::new(email_config.smtp_server.clone()).unwrap_or_else(|e| {
+        error!("Failed to create TLS parameters: {}", e);
+        std::process::exit(1);
+    });
+
+    // 根据 SMTP 端口选择 TLS 类型
+    let tls = match email_config.smtp_port {
+        465 => Tls::Wrapper(tls_parameters),
+        587 => Tls::Required(tls_parameters),
+        _ => Tls::Opportunistic(tls_parameters),
+    };
+
+    // 创建 SMTP 传输
+    let smtp_transport = SmtpTransport::relay(&email_config.smtp_server)
+        .unwrap_or_else(|e| {
+            error!("Failed to create SMTP transport: {}", e);
+            std::process::exit(1);
+        })
+        .credentials(creds)
+        .port(email_config.smtp_port)
+        .tls(tls)
+        .build();
+
+    Ok(smtp_transport)
+}
+
 #[tokio::main]
 async fn main() {
     // 初始化日志
@@ -244,32 +324,33 @@ async fn main() {
         .with_line_number(true)
         .init();
 
-    // 加载配置时添加日志
     info!("Starting email server...");
 
-    // 加载环境变量
-    let config = Config::builder()
-        .add_source(File::with_name("email_config.json"))
-        .build()
-        .unwrap();
-    let config: EmailConfig = config.try_deserialize().unwrap();
+    // 加载配置
+    info!("Loading configuration from ./app_config.json");
+    let app_config = get_app_config();
     info!("Configuration loaded successfully");
 
-    // 配置 SMTP 传输
-    let creds = Credentials::new(config.email_account.clone(), config.email_password.clone());
-
-    let smtp_transport = SmtpTransport::relay(&config.smtp_server)
-        .unwrap()
-        .credentials(creds)
-        .port(config.smtp_port)
-        .build();
+    // 创建 SMTP 传输
+    info!(
+        "Configuring SMTP transport for server: {}:{} with TLS",
+        app_config.email.smtp_server, app_config.email.smtp_port
+    );
+    let smtp_transport = create_smtp_transport(&app_config.email).unwrap();
     info!("SMTP transport configured successfully");
+
+    // 启动服务器
+    let addr = format!(
+        "{}:{}",
+        app_config.server.server_host, app_config.server.server_port
+    );
+    info!("Server starting on {}", addr);
 
     // 创建应用状态
     let state = Arc::new(AppState {
         rate_limit: Mutex::new(RateLimit::new()),
         smtp_transport,
-        config,
+        app_config,
     });
 
     // 构建路由
@@ -278,9 +359,7 @@ async fn main() {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    // 启动服务器
-    info!("Server starting on 0.0.0.0:3000");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     info!("🎉 Server started successfully!");
 
     axum::serve(listener, app)

@@ -4,19 +4,26 @@ A simple SMTP email server built with Rust.
 
 ## Quick Start
 
-1. Put `email_config.json` and `email-server` in the same folder.
-2. Edit `email_config.json` with your settings:
+1. Put `app_config.json` and `email-server` in the same folder.
+2. Edit `app_config.json` with your settings:
 
     ```json
     {
-        "smtp_server": "smtp.example.com",
-        "smtp_port": 587,
-        "email_account": "your-email@example.com",
-        "email_password": "your-password",
-        "email_from": "your-email@example.com",
-        "email_to": "default-to@example.com",
-        "sender_name": "default-to@example.com",
-        "api_key": "your-api-key"
+        "email": {
+            "smtp_server": "smtp.example.com",
+            "smtp_port": 587,
+            "email_account": "your-email@example.com",
+            "email_password": "your-password",
+            "email_from": "your-email@example.com",
+            "email_to": "default-to@example.com",
+            "sender_name": "default sender name"
+        },
+        "server": {
+            "api_key": "your-api-key",
+            "server_host": "0.0.0.0",
+            "server_port": 3000
+        }
+
     }
     ```
 
@@ -28,6 +35,9 @@ A simple SMTP email server built with Rust.
     - email\_to: Default recipient email
     - sender\_name: Default sender display name
     - api\_key: API key for authentication
+    - server\_host: Server host address, optional, default is `0.0.0.0`
+    - server\_port: Server port, optional, default is `3000`
+
 3. run `./email-server`
 
 ## API Usage
@@ -48,7 +58,7 @@ curl -X POST \
 }'
 ```
 
-`from` , `to` and `sender_name` are optional, set it to empty to use the defaults in `email_config.json` :
+`from` , `to` and `sender_name` are optional, set it to empty to use the defaults in `app_config.json` :
 
 ```bash
 curl -X POST \
